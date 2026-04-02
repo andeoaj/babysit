@@ -3,14 +3,14 @@
 //  Firebase 10 + Google Auth + Firestore real-time
 // ============================================================
 
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
+import { initializeApp } from 'firebase/app';
 import {
   getAuth,
   GoogleAuthProvider,
   signInWithPopup,
   onAuthStateChanged,
   signOut,
-} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
+} from 'firebase/auth';
 import {
   getFirestore,
   doc,
@@ -20,7 +20,7 @@ import {
   collection,
   where,
   serverTimestamp,
-} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+} from 'firebase/firestore';
 
 // ============================================================
 //  FIREBASE CONFIG
@@ -28,12 +28,13 @@ import {
 //    (Progetto Firebase → Impostazioni → Le tue app → SDK setup)
 // ============================================================
 const firebaseConfig = {
-  apiKey:            "INSERISCI_API_KEY",
-  authDomain:        "INSERISCI_PROJECT_ID.firebaseapp.com",
-  projectId:         "INSERISCI_PROJECT_ID",
-  storageBucket:     "INSERISCI_PROJECT_ID.appspot.com",
-  messagingSenderId: "INSERISCI_SENDER_ID",
-  appId:             "INSERISCI_APP_ID",
+  apiKey:            "AIzaSyDhRZSy4Ncgjtvlfw5uWoVN-dqIjve1Rqk",
+  authDomain:        "babysit-8f97d.firebaseapp.com",
+  projectId:         "babysit-8f97d",
+  storageBucket:     "babysit-8f97d.firebasestorage.app",
+  messagingSenderId: "34597817151",
+  appId:             "1:34597817151:web:f1b1b395c831394402e18a",
+  measurementId:     "G-EPXYSXVM2G",
 };
 
 // ============================================================
