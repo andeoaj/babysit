@@ -14,6 +14,8 @@ import {
 import {
   getFirestore,
   doc,
+  getDoc,
+  getDocs,
   setDoc,
   onSnapshot,
   query,
@@ -61,6 +63,8 @@ let currentUser            = null;
 let currentWeekMonday      = getThisMonday();
 let weekData               = {};      // { 'YYYY-MM-DD': { ... } }
 let unsubscribeListener    = null;
+let carryOverMinutes       = 0;
+let startDate              = null;    // 'YYYY-MM-DD' of the first Monday
 
 // ============================================================
 //  UTILITY: DATE
@@ -88,6 +92,13 @@ function getWeekDates(monday) {
     d.setDate(monday.getDate() + i);
     return d;
   });
+}
+
+function parseDate(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  date.setHours(0, 0, 0, 0);
+  return date;
 }
 
 function isWeekday(date) {
@@ -127,6 +138,91 @@ function timeAgo(timestamp) {
 }
 
 // ============================================================
+//  CONFIG / START DATE SETUP
+// ============================================================
+async function loadConfig() {
+  const snap = await getDoc(doc(db, 'config', 'main'));
+  if (snap.exists()) {
+    startDate = snap.data().startDate;
+    return true;
+  }
+  return false;
+}
+
+async function saveConfig(dateStr) {
+  // Snap to the Monday of the selected week
+  const d     = parseDate(dateStr);
+  const day   = d.getDay();
+  const diff  = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  startDate = formatDate(d);
+  await setDoc(doc(db, 'config', 'main'), { startDate });
+}
+
+function showSetupModal() {
+  // Default the date picker to this Monday
+  document.getElementById('start-date-input').value = formatDate(getThisMonday());
+  document.getElementById('setup-modal').classList.remove('hidden');
+}
+
+document.getElementById('save-start-date-btn').addEventListener('click', async () => {
+  const val = document.getElementById('start-date-input').value;
+  if (!val) return;
+  await saveConfig(val);
+  document.getElementById('setup-modal').classList.add('hidden');
+  loadWeek(currentWeekMonday);
+});
+
+// ============================================================
+//  CARRY-OVER CALCULATION
+// ============================================================
+async function calculateCarryOver(monday) {
+  if (!startDate) return 0;
+
+  const currentWeekKey = formatDate(monday);
+  if (startDate >= currentWeekKey) return 0; // First week: no history
+
+  // Fetch all sessions from before the current week
+  const q        = query(collection(db, 'sessions'), where('weekKey', '<', currentWeekKey));
+  const snapshot = await getDocs(q);
+
+  // Group by weekKey
+  const byWeek = {};
+  snapshot.forEach((snap) => {
+    const wk = snap.data().weekKey;
+    if (!byWeek[wk]) byWeek[wk] = {};
+    byWeek[wk][snap.id] = snap.data();
+  });
+
+  // Walk from startDate to current week (exclusive), summing surplus/deficit
+  let total  = 0;
+  let cursor = parseDate(startDate);
+
+  while (formatDate(cursor) < currentWeekKey) {
+    const wkKey  = formatDate(cursor);
+    const wkData = byWeek[wkKey] || {};
+    let   used   = 0;
+
+    getWeekDates(cursor).forEach((date) => {
+      const ds   = formatDate(date);
+      const data = wkData[ds];
+      const wd   = isWeekday(date);
+
+      const stdActive = data ? data.standardActive : wd; // default: weekdays ON
+      const extra     = data ? (data.extraMinutes || 0) : 0;
+
+      if (wd && stdActive) used += STANDARD_MINUTES;
+      used += extra;
+    });
+
+    total += TOTAL_MINUTES - used; // positive = surplus, negative = deficit
+    cursor.setDate(cursor.getDate() + 7);
+  }
+
+  return total;
+}
+
+// ============================================================
 //  AUTH
 // ============================================================
 document.getElementById('google-signin-btn').addEventListener('click', async () => {
@@ -143,7 +239,7 @@ document.getElementById('signout-btn').addEventListener('click', async () => {
   await signOut(auth);
 });
 
-onAuthStateChanged(auth, (user) => {
+onAuthStateChanged(auth, async (user) => {
   if (user) {
     currentUser = user;
 
@@ -160,9 +256,14 @@ onAuthStateChanged(auth, (user) => {
     document.getElementById('login-screen').classList.add('hidden');
     document.getElementById('app-screen').classList.remove('hidden');
 
-    // Carica settimana corrente
+    // Carica config e settimana corrente
     currentWeekMonday = getThisMonday();
-    loadWeek(currentWeekMonday);
+    const configured = await loadConfig();
+    if (!configured) {
+      showSetupModal();
+    } else {
+      loadWeek(currentWeekMonday);
+    }
   } else {
     currentUser = null;
     document.getElementById('login-screen').classList.remove('hidden');
@@ -194,11 +295,14 @@ document.getElementById('today-btn').addEventListener('click', () => {
 // ============================================================
 //  CARICAMENTO SETTIMANA (real-time)
 // ============================================================
-function loadWeek(monday) {
+async function loadWeek(monday) {
   // Cancella listener precedente
   if (unsubscribeListener) { unsubscribeListener(); unsubscribeListener = null; }
 
   updateWeekHeader(monday);
+
+  // Calculate carry-over from all past weeks (one-time fetch)
+  carryOverMinutes = await calculateCarryOver(monday);
 
   const weekKey = formatDate(monday);
 
@@ -341,26 +445,45 @@ function updateBudget(monday) {
   });
 
   const usedMinutes      = standardMinutes + extraMinutes;
-  const remainingMinutes = TOTAL_MINUTES - usedMinutes;
-  const pct              = Math.min(100, Math.round((usedMinutes / TOTAL_MINUTES) * 100));
+  const effectiveBudget  = TOTAL_MINUTES + carryOverMinutes;
+  const remainingMinutes = effectiveBudget - usedMinutes;
+  const pct              = effectiveBudget > 0
+    ? Math.min(100, Math.round((usedMinutes / effectiveBudget) * 100))
+    : 100;
 
-  // Stat labels
+  // Carry-over display
+  const coEl = document.getElementById('stat-carryover');
+  if (carryOverMinutes === 0) {
+    coEl.textContent = '±0h';
+    coEl.className   = 'stat-value neutral';
+  } else if (carryOverMinutes > 0) {
+    coEl.textContent = `+${fmtMin(carryOverMinutes)}`;
+    coEl.className   = 'stat-value good';
+  } else {
+    coEl.textContent = fmtMin(carryOverMinutes); // already has '-'
+    coEl.className   = 'stat-value over';
+  }
+
+  // Effective budget
+  document.getElementById('stat-effective').textContent = fmtMin(effectiveBudget);
+
+  // Standard / extra breakdown
   document.getElementById('stat-standard').textContent =
     activeDays > 0 ? `${activeDays}×2h = ${fmtMin(standardMinutes)}` : '0h';
   document.getElementById('stat-extra').textContent = fmtMin(extraMinutes);
 
   // Remaining with color
   const remEl = document.getElementById('stat-remaining');
-  remEl.textContent = fmtMin(remainingMinutes);
+  remEl.textContent = remainingMinutes < 0 ? fmtMin(remainingMinutes) : fmtMin(remainingMinutes);
   remEl.className   = 'stat-value ' + (
-    remainingMinutes <= 0   ? 'over' :
-    remainingMinutes <= 60  ? 'low'  : 'good'
+    remainingMinutes <= 0  ? 'over' :
+    remainingMinutes <= 60 ? 'low'  : 'good'
   );
 
   // Progress bar
   const fill = document.getElementById('progress-fill');
-  fill.style.width   = `${pct}%`;
-  fill.className     = 'progress-fill ' + (pct >= 100 ? 'over' : pct >= 85 ? 'warning' : '');
+  fill.style.width = `${pct}%`;
+  fill.className   = 'progress-fill ' + (pct >= 100 ? 'over' : pct >= 85 ? 'warning' : '');
 
   document.getElementById('progress-used-label').textContent = `${fmtMin(usedMinutes)} usate`;
   document.getElementById('progress-pct-label').textContent  = `${pct}%`;

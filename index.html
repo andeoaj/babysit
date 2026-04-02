@@ -58,11 +58,26 @@
 
       <!-- Budget summary -->
       <div class="budget-card">
+        <!-- Row 1: base + carry-over + effective budget -->
         <div class="budget-stats">
           <div class="budget-stat">
-            <span class="stat-label">Budget totale</span>
+            <span class="stat-label">Base sett.</span>
             <span class="stat-value neutral">13h</span>
           </div>
+          <div class="budget-stat">
+            <span class="stat-label">Riporto prec.</span>
+            <span class="stat-value" id="stat-carryover">–</span>
+          </div>
+          <div class="budget-stat highlight">
+            <span class="stat-label">Budget effettivo</span>
+            <span class="stat-value" id="stat-effective">13h</span>
+          </div>
+        </div>
+
+        <div class="budget-divider"></div>
+
+        <!-- Row 2: usage breakdown + remaining -->
+        <div class="budget-stats">
           <div class="budget-stat">
             <span class="stat-label">Sessioni standard</span>
             <span class="stat-value neutral" id="stat-standard">–</span>
@@ -76,6 +91,7 @@
             <span class="stat-value" id="stat-remaining">13h</span>
           </div>
         </div>
+
         <div class="progress-bar">
           <div class="progress-fill" id="progress-fill" style="width:0%"></div>
         </div>
@@ -95,6 +111,17 @@
     <!-- Toast container -->
     <div id="toast-container"></div>
 
+  </div>
+
+  <!-- ── SETUP MODAL (start date) ── -->
+  <div id="setup-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="modal-icon">📅</div>
+      <h2>Da quando inizia l'accordo?</h2>
+      <p>Seleziona la prima settimana del babysitting per calcolare il riporto delle ore.</p>
+      <input type="date" id="start-date-input" class="date-input">
+      <button id="save-start-date-btn" class="btn-primary">Conferma</button>
+    </div>
   </div>
 
   <script type="module" src="app.js"></script>
