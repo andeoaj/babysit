@@ -141,7 +141,7 @@ function timeAgo(timestamp) {
 //  CONFIG / START DATE SETUP
 // ============================================================
 async function loadConfig() {
-  const snap = await getDoc(doc(db, 'config', 'main'));
+  const snap = await getDoc(doc(db, 'sessions', '_config_'));
   if (snap.exists()) {
     startDate = snap.data().startDate;
     return true;
@@ -156,7 +156,7 @@ async function saveConfig(dateStr) {
   const diff  = day === 0 ? -6 : 1 - day;
   d.setDate(d.getDate() + diff);
   startDate = formatDate(d);
-  await setDoc(doc(db, 'config', 'main'), { startDate });
+  await setDoc(doc(db, 'sessions', '_config_'), { startDate });
 }
 
 function showSetupModal() {
